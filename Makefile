@@ -1,5 +1,14 @@
-.PHONY: docs
+.PHONY: docs setup frontend-setup backend-setup
 .PHONY: fixture/main.transactions.json
+
+setup: frontend-setup backend-setup
+
+frontend-setup:
+	npm install
+	npm run build
+
+backend-setup:
+	go mod download
 
 develop:
 	./node_modules/.bin/concurrently --names "GO,JS" -c "auto" "make serve" "npm run dev"
