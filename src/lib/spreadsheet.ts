@@ -67,6 +67,23 @@ export function render(
   }
 }
 
+// renderEach renders the template once per row and returns the non-empty
+// results along with their source row index. Unlike render(), it keeps the
+// row -> transaction mapping (needed by the AI import flow) and does not join
+// or reverse. COLUMN_REFS lives here, so this helper belongs in this module.
+export function renderEach(
+  rows: Array<Record<string, any>>,
+  template: Handlebars.TemplateDelegate
+): Array<{ index: number; text: string }> {
+  return _.chain(rows)
+    .map((row) => ({
+      index: row.index as number,
+      text: _.trim(template(_.assign({ ROW: row, SHEET: rows }, COLUMN_REFS)))
+    }))
+    .filter((r) => !_.isEmpty(r.text))
+    .value();
+}
+
 function parseCSV(file: File): Promise<Result> {
   return new Promise((resolve, reject) => {
     Papa.parse<string[]>(file, {

@@ -18,6 +18,14 @@
   import * as toast from "bulma-toast";
   import FileModal from "$lib/components/FileModal.svelte";
   import Modal from "$lib/components/Modal.svelte";
+  import ImportReview from "$lib/components/ImportReview.svelte";
+  import {
+    parseRenderedTransactions,
+    hasCategorizeMarker,
+    categorizeBatches,
+    toJournal,
+    type ImportTransaction
+  } from "$lib/import_ai";
 
   let templates: ImportTemplate[] = [];
   let selectedTemplate: ImportTemplate;
@@ -32,6 +40,22 @@
   let lastOptions: any;
   let options: { reverse: boolean; trim: boolean } = { reverse: false, trim: true };
 
+  // AI assisted import state
+  let allAccounts: string[] = [];
+  let ledgerFiles: string[] = [];
+  let exampleLedger = "";
+  let aiConfig: { enabled: boolean; model: string; batch_size: number } = {
+    enabled: false,
+    model: "",
+    batch_size: 10
+  };
+  let aiTransactions: ImportTransaction[] = [];
+  let lastAiData: any = null;
+  let lastAiTemplate: any = null;
+  let categorizing = false;
+  let progress: { done: number; total: number } | null = null;
+  let abortController: AbortController | null = null;
+
   let templateEditorDom: Element;
   let templateEditor: EditorView;
 
@@ -43,9 +67,22 @@
     ({ templates } = await ajax("/api/templates"));
     selectedTemplate = templates[0];
     saveAsName = selectedTemplate.name;
+    exampleLedger = selectedTemplate.example_ledger || "";
     templateEditor = createTemplateEditor(selectedTemplate.content, templateEditorDom);
     previewEditor = createPreviewEditor(preview, previewEditorDom, { readonly: true });
+
+    const cfg = await ajax("/api/config");
+    allAccounts = cfg.accounts || [];
+    aiConfig = { ...aiConfig, ...((cfg.config as any).ai || {}) };
+
+    const { files } = await ajax("/api/editor/files", { background: true });
+    ledgerFiles = files.map((f) => f.name);
   });
+
+  function setExampleLedger(value: string) {
+    exampleLedger = value;
+    $templateEditorState = _.assign({}, $templateEditorState, { hasUnsavedChanges: true });
+  }
 
   $: saveAsNameDuplicate = !!_.find(templates, { name: saveAsName, template_type: "custom" });
 
@@ -54,7 +91,8 @@
       method: "POST",
       body: JSON.stringify({
         name: saveAsName,
-        content: templateEditor.state.doc.toString()
+        content: templateEditor.state.doc.toString(),
+        example_ledger: exampleLedger
       }),
       background: true
     });
@@ -71,6 +109,7 @@
     ({ templates } = await ajax("/api/templates", { background: true }));
     selectedTemplate = _.find(templates, { id: template.id });
     saveAsName = selectedTemplate.name;
+    exampleLedger = selectedTemplate.example_ledger || "";
     toast.toast({
       message: `Saved ${saveAsName}`,
       type: "is-success"
@@ -141,6 +180,62 @@
       templateEditor.destroy();
       templateEditor = createTemplateEditor(selectedTemplate.content, templateEditorDom);
     }
+  }
+
+  // Rebuild the structured transactions only when the source data or the
+  // compiled template change. This preserves AI results and user edits across
+  // unrelated reactive updates (option toggles, pill edits, etc).
+  $: if (!_.isEmpty(rows) && $templateEditorState.template) {
+    if (lastAiData !== data || lastAiTemplate !== $templateEditorState.template) {
+      try {
+        aiTransactions = parseRenderedTransactions(rows, $templateEditorState.template);
+      } catch (e) {
+        console.log(e);
+        aiTransactions = [];
+      }
+      lastAiData = data;
+      lastAiTemplate = $templateEditorState.template;
+    }
+  }
+
+  $: aiMode = aiConfig.enabled && hasCategorizeMarker(aiTransactions);
+
+  async function runCategorize(onlyFlagged = false) {
+    const targets = onlyFlagged ? aiTransactions.filter((t) => t.flagged) : aiTransactions;
+    abortController = new AbortController();
+    categorizing = true;
+    progress = { done: 0, total: targets.filter((t) => t.categorizeIndex >= 0).length };
+    try {
+      await categorizeBatches(targets, {
+        batchSize: aiConfig.batch_size || 10,
+        exampleLedger,
+        signal: abortController.signal,
+        onProgress: (done, total) => {
+          progress = { done, total };
+          aiTransactions = [...aiTransactions];
+        }
+      });
+    } catch (e) {
+      toast.toast({
+        message: `AI categorization failed: ${(e as Error).message}`,
+        type: "is-danger",
+        duration: 10000
+      });
+    } finally {
+      categorizing = false;
+      progress = null;
+      abortController = null;
+      aiTransactions = [...aiTransactions];
+    }
+  }
+
+  function cancelCategorize() {
+    abortController?.abort();
+  }
+
+  function commitAi() {
+    preview = toJournal(aiTransactions);
+    openSaveModal();
   }
 
   async function handleFilesSelect(e: { detail: { acceptedFiles: File[] } }) {
@@ -307,6 +402,7 @@
                 floatingConfig={{ strategy: "fixed" }}
                 on:change={(_e) => {
                   saveAsName = selectedTemplate.name;
+                  exampleLedger = selectedTemplate.example_ledger || "";
                 }}
               >
                 <div slot="selection" let:selection>
@@ -322,6 +418,34 @@
               </Select>
             </p>
           </div>
+          {#if aiConfig.enabled}
+            <div class="field mt-2 mb-0">
+              <label class="label is-small mb-1" for="example-ledger">
+                AI example ledger
+                <span class="has-text-grey is-size-7 has-text-weight-normal">
+                  — existing ledger file used as categorization examples
+                </span>
+              </label>
+              <div id="example-ledger">
+                <Select
+                  items={ledgerFiles}
+                  value={exampleLedger}
+                  showChevron={true}
+                  searchable={true}
+                  clearable={true}
+                  placeholder="(optional) pick a ledger file"
+                  floatingConfig={{ strategy: "fixed" }}
+                  on:change={(e) => setExampleLedger(e.detail?.value ?? "")}
+                  on:clear={() => setExampleLedger("")}
+                />
+              </div>
+              {#if selectedTemplate?.template_type == "builtin" && exampleLedger}
+                <p class="help is-warning">
+                  Save as a custom template to keep this example ledger.
+                </p>
+              {/if}
+            </div>
+          {/if}
         </div>
         <div class="box py-0">
           <div class="field">
@@ -330,7 +454,20 @@
             </div>
           </div>
         </div>
-        <div class="box py-0">
+        {#if aiMode}
+          <ImportReview
+            bind:transactions={aiTransactions}
+            {allAccounts}
+            model={aiConfig.model}
+            {categorizing}
+            {progress}
+            on:categorize={() => runCategorize(false)}
+            on:recategorizeFlagged={() => runCategorize(true)}
+            on:cancel={cancelCategorize}
+            on:commit={commitAi}
+          />
+        {/if}
+        <div class="box py-0" class:is-hidden={aiMode}>
           <div class="field">
             <div class="control">
               <button

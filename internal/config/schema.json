@@ -1023,6 +1023,10 @@
             "description": "Name of the template",
             "minLength": 1
           },
+          "example_ledger": {
+            "type": "string",
+            "description": "Path (relative to the journal directory) to an existing ledger file whose already-categorized transactions are used as examples for AI assisted import."
+          },
           "content": {
             "type": "string",
             "ui:widget": "textarea"
@@ -1125,6 +1129,40 @@
         ],
         "additionalProperties": false
       }
+    },
+    "ai": {
+      "type": "object",
+      "description": "AI assisted import. Uses an OpenAI compatible chat completions endpoint to categorize imported transactions.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable AI assisted import"
+        },
+        "base_url": {
+          "type": "string",
+          "description": "Base URL of the OpenAI compatible API, e.g. https://api.openai.com/v1"
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key. Falls back to the PAISA_AI_API_KEY environment variable when left empty."
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name, e.g. gpt-4o-mini"
+        },
+        "batch_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of transactions sent to the model per request"
+        },
+        "confidence_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Transactions categorized below this confidence are flagged for review"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": ["journal_path", "db_path"],

@@ -47,8 +47,21 @@ const (
 )
 
 type ImportTemplate struct {
-	Name    string `json:"name" yaml:"name"`
-	Content string `json:"content" yaml:"content"`
+	Name string `json:"name" yaml:"name"`
+	// ExampleLedger is the path (relative to the journal directory) to an
+	// existing ledger file whose already-categorized transactions are used as
+	// few-shot context for AI assisted import.
+	ExampleLedger string `json:"example_ledger" yaml:"example_ledger"`
+	Content       string `json:"content" yaml:"content"`
+}
+
+type AI struct {
+	Enabled             bool    `json:"enabled" yaml:"enabled"`
+	BaseURL             string  `json:"base_url" yaml:"base_url"`
+	APIKey              string  `json:"api_key" yaml:"api_key"`
+	Model               string  `json:"model" yaml:"model"`
+	BatchSize           int     `json:"batch_size" yaml:"batch_size"`
+	ConfidenceThreshold float64 `json:"confidence_threshold" yaml:"confidence_threshold"`
 }
 
 type Price struct {
@@ -150,6 +163,8 @@ type Config struct {
 
 	ImportTemplates []ImportTemplate `json:"import_templates" yaml:"import_templates"`
 
+	AI AI `json:"ai" yaml:"ai"`
+
 	Accounts []Account `json:"accounts" yaml:"accounts"`
 
 	Goals Goals `json:"goals" yaml:"goals"`
@@ -179,6 +194,7 @@ var defaultConfig = Config{
 	AllocationTargets:          []AllocationTarget{},
 	Commodities:                []Commodity{},
 	ImportTemplates:            []ImportTemplate{},
+	AI:                         AI{BaseURL: "https://api.openai.com/v1", Model: "gpt-4o-mini", BatchSize: 10, ConfidenceThreshold: 0.6},
 	Accounts:                   []Account{},
 	Goals:                      Goals{Retirement: []RetirementGoal{}, Savings: []SavingsGoal{}},
 	UserAccounts:               []UserAccount{},
@@ -339,6 +355,17 @@ func LoadConfig(content []byte, cp string) error {
 
 func GetConfig() Config {
 	return config
+}
+
+// GetAIConfig returns the AI configuration with the API key resolved from the
+// PAISA_AI_API_KEY environment variable when it is not set in the config file.
+// It returns a copy so the resolved key is never persisted back to disk.
+func GetAIConfig() AI {
+	ai := config.AI
+	if ai.APIKey == "" {
+		ai.APIKey = os.Getenv("PAISA_AI_API_KEY")
+	}
+	return ai
 }
 
 func GetJournalPath() string {
