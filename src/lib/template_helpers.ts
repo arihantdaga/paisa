@@ -6,6 +6,11 @@ import similarity from "compute-cosine-similarity";
 
 const STOP_WORDS = ["", "fof", "growth", "direct", "plan", "the"];
 
+// Sentinel account emitted by the {{categorize}} helper. It marks the posting
+// whose account should be filled in by the backend LLM during AI assisted
+// import. The import flow detects this exact string to find the leg to fill.
+export const CATEGORIZE_ACCOUNT = "Expenses:Unknown:__CATEGORIZE__";
+
 function tokenize(s: string) {
   return _.mapValues(
     _.groupBy(
@@ -153,6 +158,9 @@ export default {
     } else {
       return prefix + ":Unknown";
     }
+  },
+  categorize() {
+    return CATEGORIZE_ACCOUNT;
   },
   isBlank(str: string) {
     return _.isEmpty(str) || _.trim(str) === "";

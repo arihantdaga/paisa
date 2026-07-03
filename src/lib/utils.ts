@@ -484,6 +484,7 @@ export interface ImportTemplate {
   id: string;
   name: string;
   content: string;
+  example_ledger?: string;
   template_type: string;
 }
 
@@ -681,6 +682,22 @@ export function ajax(
   route: "/api/templates/delete",
   options?: RequestOptions
 ): Promise<{ success: boolean; message?: string }>;
+export function ajax(
+  route: "/api/import/categorize",
+  options?: RequestOptions
+): Promise<{
+  results?: {
+    id: string;
+    payee: string;
+    account: string;
+    note: string;
+    confidence: number;
+    alternatives: { account: string; confidence: number }[];
+    rationale: string;
+    flagged: boolean;
+  }[];
+  error?: string;
+}>;
 
 export function ajax(
   route: "/api/editor/files",

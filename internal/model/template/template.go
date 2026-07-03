@@ -22,17 +22,18 @@ const (
 )
 
 type Template struct {
-	ID           string       `json:"id"`
-	Name         string       `json:"name"`
-	Content      string       `json:"content"`
-	TemplateType TemplateType `json:"template_type"`
+	ID            string       `json:"id"`
+	Name          string       `json:"name"`
+	Content       string       `json:"content"`
+	ExampleLedger string       `json:"example_ledger"`
+	TemplateType  TemplateType `json:"template_type"`
 }
 
 func All() []Template {
 	var templates []Template
 
 	for _, t := range config.GetConfig().ImportTemplates {
-		template := Template{ID: buildID(t.Name, Custom), Name: t.Name, Content: t.Content, TemplateType: Custom}
+		template := Template{ID: buildID(t.Name, Custom), Name: t.Name, Content: t.Content, ExampleLedger: t.ExampleLedger, TemplateType: Custom}
 		templates = append(templates, template)
 	}
 
@@ -55,8 +56,8 @@ func All() []Template {
 	return templates
 }
 
-func Upsert(name string, content string) Template {
-	template := Template{ID: buildID(name, Custom), Name: name, Content: content, TemplateType: Custom}
+func Upsert(name string, content string, exampleLedger string) Template {
+	template := Template{ID: buildID(name, Custom), Name: name, Content: content, ExampleLedger: exampleLedger, TemplateType: Custom}
 
 	if config.GetConfig().Readonly {
 		return template
@@ -64,7 +65,7 @@ func Upsert(name string, content string) Template {
 
 	Delete(name)
 	cfg := config.GetConfig()
-	cfg.ImportTemplates = append(cfg.ImportTemplates, config.ImportTemplate{Name: name, Content: content})
+	cfg.ImportTemplates = append(cfg.ImportTemplates, config.ImportTemplate{Name: name, Content: content, ExampleLedger: exampleLedger})
 	err := config.SaveConfigObject(cfg)
 	if err != nil {
 		log.Fatal(err)

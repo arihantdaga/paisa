@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/ananthakumaran/paisa/internal/accounting"
+	"github.com/ananthakumaran/paisa/internal/ai"
 	"github.com/ananthakumaran/paisa/internal/config"
 	"github.com/ananthakumaran/paisa/internal/generator"
 	"github.com/ananthakumaran/paisa/internal/ledger"
@@ -324,6 +327,51 @@ func Build(db *gorm.DB, enableCompression bool) *gin.Engine {
 		c.JSON(200, prediction.GetTfIdf(db))
 	})
 
+	router.POST("/api/import/categorize", func(c *gin.Context) {
+		var payload struct {
+			Transactions  []ai.Transaction `json:"transactions"`
+			ExampleLedger string           `json:"example_ledger"`
+		}
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		aiConfig := config.GetAIConfig()
+		if !aiConfig.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AI assisted import is not enabled. Set ai.enabled to true in your configuration."})
+			return
+		}
+
+		provider, err := ai.NewOpenAIProvider(aiConfig.BaseURL, aiConfig.APIKey, aiConfig.Model)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Build few-shot examples from the template's example ledger file, if set.
+		examples := ""
+		if payload.ExampleLedger != "" {
+			dir := filepath.Dir(config.GetJournalPath())
+			path, perr := utils.BuildSubPath(dir, payload.ExampleLedger)
+			if perr != nil {
+				log.Warn("Invalid example ledger path: ", perr)
+			} else if content, rerr := os.ReadFile(path); rerr != nil {
+				log.Warn("Failed to read example ledger: ", rerr)
+			} else {
+				examples = ai.FormatLedgerExamples(string(content), 40)
+			}
+		}
+
+		results, err := ai.Categorize(c.Request.Context(), provider, payload.Transactions, accounting.AllAccounts(db), examples, aiConfig.ConfidenceThreshold)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(200, gin.H{"results": results})
+	})
+
 	router.GET("/api/templates", func(c *gin.Context) {
 		c.JSON(200, gin.H{"templates": template.All()})
 	})
@@ -340,7 +388,7 @@ func Build(db *gorm.DB, enableCompression bool) *gin.Engine {
 			return
 		}
 
-		c.JSON(200, gin.H{"template": template.Upsert(t.Name, t.Content), "saved": true})
+		c.JSON(200, gin.H{"template": template.Upsert(t.Name, t.Content, t.ExampleLedger), "saved": true})
 	})
 
 	router.POST("/api/templates/delete", func(c *gin.Context) {
