@@ -26,3 +26,5 @@ fonts/*
 !fonts/*.scss
 /result
 brand/*.png
+
+dev_data/*

@@ -1,5 +1,8 @@
-.PHONY: docs setup frontend-setup backend-setup
+.PHONY: docs setup frontend-setup backend-setup dev-data
 .PHONY: fixture/main.transactions.json
+
+DEV_CONFIG := $(CURDIR)/dev_data/paisa.yaml
+DEV_PORT := 7501
 
 setup: frontend-setup backend-setup
 
@@ -13,8 +16,18 @@ backend-setup:
 develop:
 	./node_modules/.bin/concurrently --names "GO,JS" -c "auto" "make serve" "npm run dev"
 
+# Generate a dev config (once) pointing the journal at dev_data/Ledgers/main.ledger.
+$(DEV_CONFIG):
+	printf 'journal_path: Ledgers/main.ledger\ndb_path: paisa.db\n' > $@
+
+# Start the dev server (Go API + frontend) using the dev_data ledgers.
+dev-data: $(DEV_CONFIG)
+	PAISA_CONFIG=$(DEV_CONFIG) go run . update
+	PAISA_CONFIG=$(DEV_CONFIG) PAISA_PORT=$(DEV_PORT) ./node_modules/.bin/concurrently --names "GO,JS" -c "auto" "make serve PORT=$(DEV_PORT)" "npm run dev"
+
+PORT ?= 7500
 serve:
-	./node_modules/.bin/nodemon --signal SIGTERM --delay 2000ms --watch '.' --ext go,json --exec 'go run . serve || exit 1'
+	./node_modules/.bin/nodemon --signal SIGTERM --delay 2000ms --watch '.' --ext go,json --exec 'go run . serve -p $(PORT) || exit 1'
 
 debug:
 	./node_modules/.bin/concurrently --names "GO,JS" -c "auto" "make serve-now" "npm run dev"
