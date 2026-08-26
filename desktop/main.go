@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "embed"
+	"fmt"
 	"os"
 
 	"github.com/ananthakumaran/paisa/cmd"
@@ -61,7 +62,7 @@ func main() {
 		Mac: &mac.Options{
 			About: &mac.AboutInfo{
 				Title:   "Paisa",
-				Message: "Version 0.7.4 \nCopyright © 2022 - 2025 \nAnantha Kumaran",
+				Message: fmt.Sprintf("Version %s \nCopyright © 2022 - 2025 \nAnantha Kumaran", cmd.Version),
 				Icon:    icon,
 			},
 		},

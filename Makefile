@@ -1,7 +1,15 @@
-.PHONY: docs setup frontend-setup backend-setup
+.PHONY: docs setup frontend-setup backend-setup set-version
 .PHONY: fixture/main.transactions.json
 
 setup: frontend-setup backend-setup
+
+set-version:
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make set-version VERSION=x.y.z"; exit 1; fi
+	printf '%s' "$(VERSION)" > cmd/VERSION
+	sed -i.bak 's/version = "[^"]*";/version = "$(VERSION)";/' flake.nix && rm -f flake.nix.bak
+	sed -i.bak 's/"productVersion": "[^"]*"/"productVersion": "$(VERSION)"/' desktop/wails.json && rm -f desktop/wails.json.bak
+	sed -i.bak 's/^Version: .*/Version: $(VERSION)/' desktop/build/linux/DEBIAN/control && rm -f desktop/build/linux/DEBIAN/control.bak
+	@echo "Version set to $(VERSION)"
 
 frontend-setup:
 	npm install
